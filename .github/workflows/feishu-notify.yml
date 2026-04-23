@@ -1,0 +1,101 @@
+name: Notify Feishu on Issue
+
+on:
+  issues:
+    types: [opened, reopened]
+  issue_comment:
+    types: [created]
+
+jobs:
+  notify:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Send to Feishu
+        env:
+          FEISHU_WEBHOOK: ${{ secrets.FEISHU_BOT_WEBHOOK }}
+          FEISHU_SIGNKEY: ${{ secrets.FEISHU_BOT_SIGNKEY }}
+        run: |
+          TITLE="${{ github.event.issue.title }}"
+          USER="${{ github.event.issue.user.login }}"
+          URL="${{ github.event.issue.html_url }}"
+          LABELS=$(echo '${{ toJSON(github.event.issue.labels.*.name) }}' | jq -r 'join(", ")')
+
+          if [ "${{ github.event_name }}" = "issue_comment" ]; then
+            ACTION="New comment on"
+            BODY=$(echo '${{ toJSON(github.event.comment.body) }}' | jq -r '.' | head -c 500)
+            USER="${{ github.event.comment.user.login }}"
+          elif [ "${{ github.event.action }}" = "reopened" ]; then
+            ACTION="Reopened"
+            BODY=$(echo '${{ toJSON(github.event.issue.body) }}' | jq -r '.' | head -c 500)
+          else
+            ACTION="New issue"
+            BODY=$(echo '${{ toJSON(github.event.issue.body) }}' | jq -r '.' | head -c 500)
+          fi
+
+          # Feishu signature: HMAC-SHA256(key="timestamp\nsecret", msg=""), then base64
+          TIMESTAMP=$(date +%s)
+          export TIMESTAMP
+          SIGN=$(python3 -c "
+          import hmac, hashlib, base64, os
+          ts = os.environ['TIMESTAMP']
+          secret = os.environ['FEISHU_SIGNKEY']
+          key = f'{ts}\n{secret}'.encode()
+          sign = base64.b64encode(hmac.new(key, b'', hashlib.sha256).digest()).decode()
+          print(sign)
+          ")
+
+          # Build Feishu card message
+          PAYLOAD=$(jq -n \
+            --arg timestamp "$TIMESTAMP" \
+            --arg sign "$SIGN" \
+            --arg action "$ACTION" \
+            --arg title "$TITLE" \
+            --arg user "$USER" \
+            --arg url "$URL" \
+            --arg labels "$LABELS" \
+            --arg body "$BODY" \
+            '{
+              "timestamp": $timestamp,
+              "sign": $sign,
+              "msg_type": "interactive",
+              "card": {
+                "header": {
+                  "title": {
+                    "tag": "plain_text",
+                    "content": ("\($action): \($title)")
+                  },
+                  "template": (if $action == "New issue" then "red" elif $action == "Reopened" then "orange" else "blue" end)
+                },
+                "elements": [
+                  {
+                    "tag": "div",
+                    "fields": [
+                      {"is_short": true, "text": {"tag": "lark_md", "content": ("**Author:** \($user)")}},
+                      {"is_short": true, "text": {"tag": "lark_md", "content": ("**Labels:** \(if $labels == "" then "-" else $labels end)")}}
+                    ]
+                  },
+                  {
+                    "tag": "div",
+                    "text": {
+                      "tag": "lark_md",
+                      "content": $body
+                    }
+                  },
+                  {
+                    "tag": "action",
+                    "actions": [
+                      {
+                        "tag": "button",
+                        "text": {"tag": "plain_text", "content": "View on GitHub"},
+                        "url": $url,
+                        "type": "primary"
+                      }
+                    ]
+                  }
+                ]
+              }
+            }')
+
+          curl -s -X POST "$FEISHU_WEBHOOK" \
+            -H "Content-Type: application/json" \
+            -d "$PAYLOAD"

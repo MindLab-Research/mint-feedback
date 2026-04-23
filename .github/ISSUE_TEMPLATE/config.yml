@@ -1,0 +1,8 @@
+blank_issues_enabled: false
+contact_links:
+  - name: MinT Documentation
+    url: https://github.com/MindLab-Research/mint-doc
+    about: Check the docs before filing an issue
+  - name: MinT Quickstart
+    url: https://github.com/MindLab-Research/mint-quickstart
+    about: Getting started guide
