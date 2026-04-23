@@ -33,12 +33,12 @@ jobs:
           fi
 
           # Clean up GitHub issue form markup:
-          # - Remove ### section headers
+          # - Convert ### headers to bold (lark_md has no heading syntax)
           # - Remove "No response" / "_No response_" placeholders
           # - Collapse multiple blank lines
           # - Trim leading/trailing whitespace
           BODY=$(echo "$RAW_BODY" \
-            | sed '/^### /d' \
+            | sed 's/^### \(.*\)/**\1**/' \
             | sed '/^_No response_$/d' \
             | sed '/^No response$/d' \
             | sed '/^$/N;/^\n$/d' \
