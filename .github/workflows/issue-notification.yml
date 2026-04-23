@@ -1,4 +1,4 @@
-name: Notify Feishu on Issue
+name: Issue Notification
 
 on:
   issues:
