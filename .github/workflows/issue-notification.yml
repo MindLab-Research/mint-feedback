@@ -10,7 +10,7 @@ jobs:
   notify:
     runs-on: ubuntu-latest
     steps:
-      - name: Send to Feishu
+      - name: Send notification
         env:
           FEISHU_WEBHOOK: ${{ secrets.FEISHU_BOT_WEBHOOK }}
           FEISHU_SIGNKEY: ${{ secrets.FEISHU_BOT_SIGNKEY }}
@@ -22,15 +22,28 @@ jobs:
 
           if [ "${{ github.event_name }}" = "issue_comment" ]; then
             ACTION="New comment on"
-            BODY=$(echo '${{ toJSON(github.event.comment.body) }}' | jq -r '.' | head -c 500)
+            RAW_BODY=$(echo '${{ toJSON(github.event.comment.body) }}' | jq -r '.')
             USER="${{ github.event.comment.user.login }}"
           elif [ "${{ github.event.action }}" = "reopened" ]; then
             ACTION="Reopened"
-            BODY=$(echo '${{ toJSON(github.event.issue.body) }}' | jq -r '.' | head -c 500)
+            RAW_BODY=$(echo '${{ toJSON(github.event.issue.body) }}' | jq -r '.')
           else
             ACTION="New issue"
-            BODY=$(echo '${{ toJSON(github.event.issue.body) }}' | jq -r '.' | head -c 500)
+            RAW_BODY=$(echo '${{ toJSON(github.event.issue.body) }}' | jq -r '.')
           fi
+
+          # Clean up GitHub issue form markup:
+          # - Remove ### section headers
+          # - Remove "No response" / "_No response_" placeholders
+          # - Collapse multiple blank lines
+          # - Trim leading/trailing whitespace
+          BODY=$(echo "$RAW_BODY" \
+            | sed '/^### /d' \
+            | sed '/^_No response_$/d' \
+            | sed '/^No response$/d' \
+            | sed '/^$/N;/^\n$/d' \
+            | sed -e 's/^[[:space:]]*//' -e 's/[[:space:]]*$//' \
+            | head -c 500)
 
           # Feishu signature: HMAC-SHA256(key="timestamp\nsecret", msg=""), then base64
           TIMESTAMP=$(date +%s)
@@ -44,7 +57,7 @@ jobs:
           print(sign)
           ")
 
-          # Build Feishu card message
+          # Build card message
           PAYLOAD=$(jq -n \
             --arg timestamp "$TIMESTAMP" \
             --arg sign "$SIGN" \
@@ -78,7 +91,7 @@ jobs:
                     "tag": "div",
                     "text": {
                       "tag": "lark_md",
-                      "content": $body
+                      "content": (if $body == "" then "(no content)" else $body end)
                     }
                   },
                   {
