@@ -2,7 +2,7 @@ name: Issue Notification
 
 on:
   issues:
-    types: [opened, reopened]
+    types: [opened, reopened, closed]
   issue_comment:
     types: [created]
 
@@ -24,6 +24,9 @@ jobs:
             ACTION="New comment on"
             RAW_BODY=$(echo '${{ toJSON(github.event.comment.body) }}' | jq -r '.')
             USER="${{ github.event.comment.user.login }}"
+          elif [ "${{ github.event.action }}" = "closed" ]; then
+            ACTION="Closed"
+            RAW_BODY=$(echo '${{ toJSON(github.event.issue.body) }}' | jq -r '.')
           elif [ "${{ github.event.action }}" = "reopened" ]; then
             ACTION="Reopened"
             RAW_BODY=$(echo '${{ toJSON(github.event.issue.body) }}' | jq -r '.')
@@ -77,7 +80,7 @@ jobs:
                     "tag": "plain_text",
                     "content": ("\($action): \($title)")
                   },
-                  "template": (if $action == "New issue" then "red" elif $action == "Reopened" then "orange" else "blue" end)
+                  "template": (if $action == "New issue" then "red" elif $action == "Closed" then "green" elif $action == "Reopened" then "orange" else "blue" end)
                 },
                 "elements": [
                   {
